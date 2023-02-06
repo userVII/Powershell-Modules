@@ -72,9 +72,13 @@ function Setup_FileLogging($logFilePath){
 
 function Setup_EventLogging($eventLogName, $eventSourceName){
     #Create event log source if it doesn't exist
-    if (! ([System.Diagnostics.EventLog]::SourceExists($eventSourceName))){
-        New-EventLog –LogName $eventLogName –Source $eventSourceName
-    } 
+    try{
+        if (! ([System.Diagnostics.EventLog]::SourceExists($eventSourceName))){
+            New-EventLog –LogName $eventLogName –Source $eventSourceName
+        }
+    }catch{
+        Write-Verbose "An error occured creating $eventSourceName in $eventLogName"
+    }
 }
 
 function Write_FileLog($logFilePath, $dateFormatted, $errorLevelString, $messageString){
@@ -87,10 +91,14 @@ function Write_FileLog($logFilePath, $dateFormatted, $errorLevelString, $message
 }
 
 function Write_EventViewerLog($eventLogName, $eventSourceName, $levelEntryTypeString, $levelValueInt, $errorLevelString, $messageString){
-    if (([System.Diagnostics.EventLog]::SourceExists($eventSourceName))){
-        Write-EventLog -LogName $eventLogName –Source $eventSourceName –EntryType $levelEntryTypeString –EventID $levelValueInt –Message “$errorLevelString $messageString”
-    }else{
-        Write-Warning "Could not write to Event Viewer"
+    try{
+        if (([System.Diagnostics.EventLog]::SourceExists($eventSourceName))){
+            Write-EventLog -LogName $eventLogName –Source $eventSourceName –EntryType $levelEntryTypeString –EventID $levelValueInt –Message “$errorLevelString $messageString”
+        }else{
+            Write-Verbose "Could not write to Event Viewer"
+        }
+    }catch{
+        Write-Verbose "Could not write to $eventSourceName in $eventLogName, the event log may not exist."
     }
 }
 
@@ -113,7 +121,10 @@ param(
     [switch]$WriteFileLog = $True,
 
     [Parameter(Mandatory=$true)] 
-    [string]$StringToLog
+    [string]$StringToLog,
+    
+    [Parameter(Mandatory=$false)] 
+    [switch]$EnableLogging = $True
     )
 
     $FormattedDate = Get-Date -Format "yyyy-MM-dd HH:mm:ss"    
@@ -123,38 +134,42 @@ param(
     $LevelValue = 0
     $LevelEntryType = ""
     
-    switch ($EventLevel){ 
-    "Error" { 
-        Write-Warning $StringToLog 
-        $LevelText = "ERROR:"
-        $LevelValue = 3
-        $LevelEntryType = "Error"
-        break
-        } 
-    "Warn" { 
-        Write-Warning $StringToLog
-        $LevelText = "WARNING:"
-        $LevelValue = 2
-        $LevelEntryType = "Warning"
-        break
-        } 
-    "Info" { 
-        Write-Verbose $StringToLog 
-        $LevelText = "INFO:"
-        $LevelValue = 1
-        $LevelEntryType = "Information"
-        break
+    #Setup for Event Viewer and log file
+    if($EnableLogging){
+        switch ($EventLevel){ 
+        "Error" { 
+            Write-Verbose $StringToLog
+            $LevelText = "ERROR:"
+            $LevelValue = 3
+            $LevelEntryType = "Error"
+            break
+            } 
+        "Warn" { 
+            Write-Verbose $StringToLog
+            $LevelText = "WARNING:"
+            $LevelValue = 2
+            $LevelEntryType = "Warning"
+            break
+            } 
+        "Info" { 
+            Write-Verbose $StringToLog 
+            $LevelText = "INFO:"
+            $LevelValue = 1
+            $LevelEntryType = "Information"
+            break
+            }
         }
-    }
 
-    if($WriteFileLog){
-        Setup_FileLogging $PathToLogFile
-        Write_FileLog $PathToLogFile $FormattedDate $LevelText $StringToLog
-    }
-
-    if($WriteInEventViewer){
-        Setup_EventLogging $LogName $EventLogSourceName
-        Write_EventViewerLog $LogName $EventLogSourceName $LevelEntryType $LevelValue $LevelText $StringToLog
+        if($WriteFileLog){
+            Setup_FileLogging $PathToLogFile
+            Write_FileLog $PathToLogFile $FormattedDate $LevelText $StringToLog
+        }
+        if($WriteInEventViewer){
+            Setup_EventLogging $LogName $EventLogSourceName
+            Write_EventViewerLog $LogName $EventLogSourceName $LevelEntryType $LevelValue $LevelText $StringToLog
+        }
+    }else{
+        Write-Host $StringToLog
     }
 }
 
